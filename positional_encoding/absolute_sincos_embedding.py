@@ -55,11 +55,15 @@ def positionalencoding2d(d_model, height, width):
 
 
 if __name__=="__main__":
-    
-    input_tensor = torch.randn(1,128,320,640).cuda()
+
     
     positional_embedding_2d = positionalencoding2d(d_model=128,height=320,width=640).cuda()
     
     
     print(positional_embedding_2d.shape)
-    pass
+    
+    positional_embedding_1d = positionalencoding1d(d_model=128,length=3200).cuda()
+    print(positional_embedding_1d.shape)
+    
+    
+   

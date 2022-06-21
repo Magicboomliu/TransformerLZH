@@ -63,7 +63,7 @@ if __name__=="__main__":
     for o in out:
         print(o.shape)
     
-
-
 ```
+
+### 1.2 Simple Vision Transformer (W/O ClS Token) --> Simply for Feature Extraction.  
 
