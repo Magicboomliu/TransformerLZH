@@ -1,11 +1,3 @@
-# TransformerLZH
-This is Transformer Repo for beiginers to use: Including Vit, Cross-vit, Swin Transformer and their blocks.  
-
-### 1.1 Swin Tranformer blocks  
-This is designed for those directly want to use Swin-Transformer(Local Window + Shift Window Attention) to do feature aggregation.  
-
-* how to use? 
-```
 
 import torch
 import torch.nn as nn
@@ -14,6 +6,7 @@ sys.path.append("../")
 from Transformer.SwinTransformer.MySwinBlocks import MySwinFormerBlocks
 '''
 Usage Of SwinTransformerBlocks
+
 '''
 
 if __name__=="__main__":
@@ -63,7 +56,3 @@ if __name__=="__main__":
     for o in out:
         print(o.shape)
     
-
-
-```
-
