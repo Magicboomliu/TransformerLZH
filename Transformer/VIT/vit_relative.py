@@ -240,8 +240,7 @@ if __name__=="__main__":
     image = torch.randn(1,128,40,80).cuda()
     
     vit = ViT(image_size=(40,80),patch_size=(1,1),heads=(2,4,4),dim_head=64,depths=3,
-              embedd_dim=512,mlp_dim=256,input_channels=128,dropout_rate=0.,emb_dropout=0.,
-              ape='sincos1d').cuda()
+              embedd_dim=512,mlp_dim=256,input_channels=128,dropout_rate=0.,emb_dropout=0.).cuda()
     
     vit(image)
     

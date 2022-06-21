@@ -66,4 +66,44 @@ if __name__=="__main__":
 ```
 
 ### 1.2 Simple Vision Transformer (W/O ClS Token) --> Simply for Feature Extraction.  
+* Absolute Positional Embedding  
+   - Learnable Absolute Positional Embedding  
+   - SinCos Positional Embedding 
 
+How to use ? 
+```
+from Transformer.VIT.vit_ape import ViT
+
+# Define the networks
+vit = ViT(image_size=(40,80),patch_size=(1,1),heads=(2,4,4),dim_head=64,depths=3,
+              embedd_dim=512,mlp_dim=256,input_channels=128,dropout_rate=0.,emb_dropout=0.,
+              ape='sincos1d').cuda()
+    
+vit(image)
+```
+THE API: 
+```
+if self.ape =='learn':
+    self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, self.embedd_dim))
+elif self.ape =='sincos2d':
+    self.pos_embedding = positionalencoding2d(d_model=self.embedd_dim,height=H//patch_H,width=W//patch_W).cuda()
+    self.pos_embedding = self.pos_embedding.permute(1,2,0).view(-1,self.embedd_dim).unsqueeze(0)
+    self.pos_embedding.requires_grad = False
+elif self.ape =='sincos1d':
+    self.pos_embedding = positionalencoding1d(d_model=self.embedd_dim,length=num_patches).cuda().unsqueeze(0)
+    self.pos_embedding.requires_grad = False
+```
+
+* Relative Positional Embedding  
+```
+from Transformer.VIT.vit_relative import ViT
+if __name__=="__main__":
+    
+    image = torch.randn(1,128,40,80).cuda()
+    
+    vit = ViT(image_size=(40,80),patch_size=(1,1),heads=(2,4,4),dim_head=64,depths=3,
+              embedd_dim=512,mlp_dim=256,input_channels=128,dropout_rate=0.,emb_dropout=0.).cuda()
+    
+    vit(image)
+
+```
