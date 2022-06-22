@@ -5,6 +5,7 @@ import sys
 sys.path.append("../")
 from Transformer.SwinTransformer.MySwinBlocks import MySwinFormerBlocks
 from Transformer.VIT.vit_ape import ViT
+from Transformer.CrossVit.crossvit_ape import CrossVit
 
 '''
 Usage Of SwinTransformerBlocks

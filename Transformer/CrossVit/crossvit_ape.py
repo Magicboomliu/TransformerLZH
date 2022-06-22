@@ -272,6 +272,12 @@ class CrossVit(nn.Module):
         enc_heads:                Heads use in normal transformer for each: Dim1 for first Image, Dim2 For second Image.
         enc_head_dim:             each head dimsion for each normal transformer:Dim1 for first Image, Dim2 For second Image.
         enc_mlp_dims:             Mlp for each head dimsion for each normal transformer: Dim1 for first Image, Dim2 For second Image.
+        cross_attention_depth:    Each Basic Blocks, how many cross-attentions blocks are used.
+        cross_attention_head:     Each basic blocks, for each attention head, how many attention heads are used.
+        cross_attention_dim_head: for each cross-attention head, how many dimension does it contains.
+        
+        skip_patch_embedding:     Spilt into Patches With Positional Embedding.
+        
         '''
         super(CrossVit,self).__init__()
         
@@ -370,9 +376,6 @@ class CrossVit(nn.Module):
         
         return feat_fusion
         
-        
-        
-
 
 
 if __name__=="__main__":

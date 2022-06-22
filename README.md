@@ -107,3 +107,35 @@ if __name__=="__main__":
     vit(image)
 
 ```
+
+### 1.3 Cross Vision Transformer Feature Extraction. 
+
+```
+from Transformer.CrossVit.crossvit_ape import CrossVit
+
+if __name__=="__main__":
+    
+    feature1 = torch.randn(1,24,40,80).cuda()
+    feature2 = torch.randn(1,24,40,80).cuda()
+    
+    crossvit = CrossVit(image_size=[(40,80),(40,80)],
+                        embedd_dim=[24,24],
+                        input_dimension=(24,24),
+                        patch_size=((1,1),(1,1)),
+                        basic_depth=1,
+                        cross_attention_dim_head=64,
+                        cross_attention_depth=1,
+                        cross_attention_head=[4],
+                        enc_depths=[1,1],
+                        enc_heads=[[4],[4]],
+                        enc_head_dim=[64,64],
+                        enc_mlp_dims=[128,128],
+                        dropout_rate=0.1,
+                        emb_dropout=0.1,
+                        skiped_patch_embedding=False).cuda()
+    
+    feat_fusion = crossvit(feature1,feature2)
+    
+    print(feat_fusion.shape)
+
+```
