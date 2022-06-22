@@ -122,6 +122,94 @@ class Attention(nn.Module):
 
         return self.to_out(out)
 
+
+
+# attention relative
+
+class AttentionRelative(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.,
+                  after_patch_height=None, after_patch_width = None):
+        super().__init__()
+
+        # Make Sure Tokens number is [after_patch_height*after_patch_weight]
+        self.after_patch_height = after_patch_height
+        self.after_patch_width = after_patch_width
+
+       #Define a parameter table of relative position bias
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros((2 * after_patch_height - 1) * (2 * after_patch_width - 1), heads))  # 2*Wh-1 * 2*Ww-1, nH
+        
+        # Get PairWise relative positional index for each token inside the window
+        coords_h = torch.arange(self.after_patch_height)
+        coords_w = torch.arange(self.after_patch_width)
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += self.after_patch_height - 1  # shift to start from 0
+        relative_coords[:, :, 1] += self.after_patch_width - 1
+        relative_coords[:, :, 0] *= 2 * self.after_patch_height - 1
+        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        self.register_buffer("relative_position_index", relative_position_index)
+
+
+        inner_dim = dim_head *  heads
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_q = nn.Linear(dim, inner_dim, bias = False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, tokens1, tokens2 = None, kv_include_self = False):
+        '''Here Decide whether it is a self-attention or cross-attention.
+        Based on 'kv_include_self'  '''
+        
+        b, n, _, h = *tokens1.shape, self.heads
+        # Whether theres is a context, if not, Input is the context
+        if tokens2 ==None:
+            context = tokens1
+        else:
+            context = tokens2
+        # include the cls tokens?
+        if kv_include_self:
+            context = tokens2 + tokens1
+
+        qkv = (self.to_q(tokens1), *self.to_kv(context).chunk(2, dim = -1))
+
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
+        # q's shape is [B,nums_heads,nums_tokens,head_dimensions]
+        # k's shape is [B,nums_head,nums_tokens,head_dimensions]
+        # v's shape is [B,nums_head,nums_tokens,head_dimensions]
+        
+        # Get The Correlation Here
+        dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+        
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+            self.after_patch_height*self.after_patch_width, self.after_patch_height * self.after_patch_width,-1)
+        
+        relative_position_bias = relative_position_bias.permute(2,0,1).contiguous()
+        dots = dots + relative_position_bias.unsqueeze(0)
+        
+        
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+        # Get The Output Here
+        out = einsum('b h i j, b h j d -> b h i d', attn, v) # [B,nums_heads,1(cls),head_dimensions] --> Only Update the cls Tokens
+    
+        out = rearrange(out, 'b h n d -> b n (h d)')
+
+        return self.to_out(out)
+
+
+
 # ProjectInOut
 class ProjectInOut(nn.Module):
     def __init__(self, dim_in, dim_out, fn):
@@ -142,13 +230,16 @@ class ProjectInOut(nn.Module):
 
 # Self-Attention Transformer
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.,
+                  after_patch_height=None, after_patch_width = None):
         super().__init__()
         self.layers = nn.ModuleList([])
         self.norm = nn.LayerNorm(dim)
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention(dim, heads = heads[_], dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, AttentionRelative(dim, heads = heads[_], dim_head = dim_head, dropout = dropout,
+                                               after_patch_height=after_patch_height,
+                                               after_patch_width=after_patch_width)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
 
@@ -160,18 +251,21 @@ class Transformer(nn.Module):
 
 # Cross-Attention Transformer
 class CrossTransformer(nn.Module):
-    def __init__(self, image1_dim, image2_dim, depth, heads, dim_head, dropout):
+    def __init__(self, image1_dim, image2_dim, depth, heads, dim_head, dropout,
+                  after_patch_height=None, after_patch_width = None):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 # Convert the Image1 Tokens encoder to Image2 Tokens
                 ProjectInOut(image1_dim, image2_dim, PreNorm(image2_dim, 
-                                Attention(image2_dim, heads = heads[_], dim_head = dim_head, dropout = dropout))),
+                                AttentionRelative(image2_dim, heads = heads[_], dim_head = dim_head, dropout = dropout,
+                                                  after_patch_height=after_patch_height,after_patch_width=after_patch_width))),
                 
                 # Convert the Image2 tokens encoder to Image1 one
                 ProjectInOut(image2_dim, image1_dim, PreNorm(image1_dim, 
-                                Attention(image1_dim, heads = heads[_], dim_head = dim_head, dropout = dropout)))
+                                AttentionRelative(image1_dim, heads = heads[_], dim_head = dim_head, dropout = dropout,
+                                                  after_patch_height=after_patch_height,after_patch_width=after_patch_width)))
             ]))
 
     def forward(self, feat1_tokens, feat2_tokens):
@@ -194,7 +288,9 @@ class BasicCrossVitBlock(nn.Module):
                  cross_attn_heads =8,
                  cross_attn_depth = 3,
                  cross_attn_dim_head =64,
-                 dropout = 0.
+                 dropout = 0.,
+                 after_height=None,
+                 after_width = None
                  ):
         super().__init__()
         
@@ -217,14 +313,17 @@ class BasicCrossVitBlock(nn.Module):
                 nn.ModuleList(
                     [ Transformer(dim=embed_dim[0],dropout=dropout,depth=image1_enc_depths,
                                   heads=image1_enc_heads,dim_head=image1_dim_head,
-                                  mlp_dim=image1_mlp_dim),
+                                  mlp_dim=image1_mlp_dim,
+                                after_patch_height=after_height, after_patch_width = after_width),
                      Transformer(dim=embed_dim[1],depth=image2_enc_depths,
                                  heads=image2_enc_heads,dim_head=image2_dim_head,
-                                 mlp_dim=image2_mlp_dim),
+                                 mlp_dim=image2_mlp_dim,
+                                after_patch_height=after_height, after_patch_width = after_width),
                       CrossTransformer(image1_dim=embed_dim[0],image2_dim=embed_dim[1],
                                        depth=cross_attn_depth,heads=cross_attn_heads,
                                        dim_head=cross_attn_dim_head,
-                                       dropout=dropout)
+                                       dropout=dropout,
+                                    after_patch_height=after_height, after_patch_width = after_width)
                     ]))
             
     def forward(self,feat1_tokens,feat2_tokens):
@@ -344,8 +443,9 @@ class CrossVit(nn.Module):
                                                               cross_attn_depth=cross_attention_depth,
                                                               cross_attn_heads=self.cross_attention_head,
                                                               cross_attn_dim_head=cross_attention_dim_head,
-                                                              dropout=dropout_rate)
-
+                                                              dropout=dropout_rate,
+                                                              after_height=self.image_size[0][0]//self.patch_size[0][0],
+                                                              after_width=self.image_size[0][1]//self.patch_size[0][1])
     def forward(self,feat1,feat2):
     
         assert feat1.shape==feat2.shape
